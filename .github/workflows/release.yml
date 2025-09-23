@@ -169,7 +169,6 @@ jobs:
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:
           name: packages
-          path: packages.tar
       # this step fails if for whatever reason the downloaded tar does not have the same checksum as the one you uploaded
       # action download contains a checksum check but it says it'll warn. we want errors!
       - name: Validate artifact
