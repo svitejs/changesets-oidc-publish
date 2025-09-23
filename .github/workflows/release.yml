@@ -99,11 +99,11 @@ jobs:
       - name: Build and pack
         id: build
         run: |
-          # print published packages
-          echo "${{needs.changesets.outputs.publishedPackages}}" | jq -r '.[] | .name + "@" +.version '
+          # print packages
+          echo 'publishing ${{needs.changesets.outputs.publishedPackages}}'
 
           # convert published packages to "--filter package1 --filter package2"
-          $PUBLISHED_PACKAGES_FILTER=$(echo "${{needs.changesets.outputs.publishedPackages}}" | jq -r '.[] | " --filter " + "\"" + .name+ "\""' | xargs)
+          $PUBLISHED_PACKAGES_FILTER=$(echo '${{needs.changesets.outputs.publishedPackages}}' | jq -r '.[] | " --filter " + "\"" + .name+ "\""' | xargs)
 
           # call build scripts - if you have packages with prepublishOnly scripts, call them here too or switch them to build
           pnpm -r $PUBLISHED_PACKAGES_FILTER build
