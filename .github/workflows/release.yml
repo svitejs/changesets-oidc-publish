@@ -16,11 +16,22 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            release-assets.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: 'false'
       # a composite action that sets up harden-runner, node, pnpm and installs deps
-      - uses: ./.github/actions/init-job
+      - uses: ./.github/actions/setup-node
       # add check scripts here, eg lint, format, build and test.
       # note that build & test in a large monorepo can be time consuming and not neeed if changesets creates a PR in the next job
       # so this workflow defers build until after changesets. Use a separate ci workflow to ensure build & test works.
@@ -39,10 +50,21 @@ jobs:
       published: ${{steps.changesets.outputs.published}}
       publishedPackages: ${{steps.changesets.outputs.publishedPackages}}
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            release-assets.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: 'false'
-      - uses: ./.github/actions/init-job
+      - uses: ./.github/actions/setup-node
       - uses: changesets/action@e0145edc7d9d8679003495b11f87bd8ef63c0cba # v1.5.3
         id: changesets
         with:
@@ -59,10 +81,21 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            github.com:443
+            nodejs.org:443
+            release-assets.githubusercontent.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           persist-credentials: 'false'
-      - uses: ./.github/actions/init-job
+      - uses: ./.github/actions/setup-node
       - name: Build and pack
         id: build
         run: |
@@ -115,20 +148,22 @@ jobs:
     name: publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Harden the runner
+        uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
         with:
-          persist-credentials: 'false'
-      - uses: ./.github/actions/init-job
-        with:
-          # tell the init composite to not install dependencies
-          install-deps: false
-          # and tell harden runner to allow the endpoints needed for publishing
-          allowed-endpoints:  >
+          egress-policy: block
+          allowed-endpoints: >
             api.github.com:443
             github.com:443
             release-assets.githubusercontent.com:443
             registry.npmjs.org:443
             *.sigstore.dev:443
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: 'false'
+      - uses: ./.github/actions/setup-node
+        with:
+          install-deps: false
       - name: Download build artifacts
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
         with:

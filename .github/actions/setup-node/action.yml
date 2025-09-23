@@ -1,33 +1,16 @@
 name: 'setup'
 description: 'composite for shared job setup'
 inputs:
-  allowed-endpoints:
-    description: 'allowed outbound connections'
-    required: true
-    default: >
-      api.github.com:443
-      github.com:443
-      nodejs.org:443
-      release-assets.githubusercontent.com:443
-      objects.githubusercontent.com:443
-      registry.npmjs.org:443
   node-version:
     description: 'node version'
-    required: true
     default: '24'
   install-deps:
     description: 'install deps'
-    required: true
     default: 'true'
 
 runs:
   using: composite
   steps:
-    - name: Harden the runner
-      uses: step-security/harden-runner@f4a75cfd619ee5ce8d5b864b0d183aff3c69b55a # v2.13.1
-      with:
-        egress-policy: block
-        allowed-endpoints: ${{inputs.allowed-endpoints}}
     # the following 2 steps are a replacement for pnpms own setup action that contains a lot of code
     - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
       with:
