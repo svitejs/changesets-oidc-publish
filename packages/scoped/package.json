@@ -1,6 +1,6 @@
 {
   "name": "@svitejs/scoped-example",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "type": "module",
   "license": "ISC",
   "files": ["index.js"],
