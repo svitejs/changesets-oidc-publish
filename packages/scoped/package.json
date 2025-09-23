@@ -1,7 +1,12 @@
 {
   "name": "@svitejs/scoped-example",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "license": "ISC",
-  "files": ["index.js"]
+  "files": ["index.js"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/svitejs/changesets-oidc-publish.git",
+    "directory": "packages/scoped"
+  }
 }

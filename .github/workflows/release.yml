@@ -188,7 +188,7 @@ jobs:
           tar -xf packages.tar
           cd packages
           for pkg in *.tgz; do
-            pnpm publish --access public --tag $TAG --no-git-checks $pkg || { echo "publishing $pkg failed"; FAILED=true; }
+            pnpm publish --access public --tag $TAG $pkg || { echo "publishing $pkg failed"; FAILED=true; }
           done
           if [[ "$FAILED" == "true" ]]; then
             echo "one or more packages failed to publish"
