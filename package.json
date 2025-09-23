@@ -1,0 +1,16 @@
+{
+  "name": "changesets-oidc-publish-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "changesets:publish": ""
+  },
+  "license": "ISC",
+  "packageManager": "pnpm@10.16.1",
+  "devDependencies": {
+    "@changesets/changelog-github": "^0.5.1",
+    "@changesets/cli": "^2.29.7",
+    "publint": "^0.3.13"
+  }
+}

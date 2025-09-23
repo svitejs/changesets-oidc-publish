@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main # must be a protected branch to ensure PR reviews
+
+# no permissions by default, each job must define theirs
+permissions: {}
+
+jobs:
+  checks:
+    permissions:
+      contents: read
+    if: github.repository == 'svitejs/changesets-oidc-publish' # just some peace of mind for forkers, even if they want to run other workflows, this one they don't
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      # a composite action that sets up harden-runner, node, pnpm and installs deps
+      - uses: ./.github/actions/init-job
+      # add check scripts here, eg lint, format, build and test.
+      # note that build & test in a large monorepo can be time consuming and not neeed if changesets creates a PR in the next job
+      # so this workflow defers build until after changesets. Use a separate ci workflow to ensure build & test works.
+      - name: "publint" # make sure your package.json are in order for publishing
+        run: |
+          pnpm -r exec publint
+
+  changesets:
+    needs: checks
+    permissions:
+      contents: write # to create releases (changesets/action)
+      pull-requests: write # to create version pull requests (changesets/action)
+    name: Changesets
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{steps.changesets.outputs.published}}
+      publishedPackages: ${{steps.changesets.outputs.publishedPackages}}
+    steps:
+      - uses: ./.github/actions/init-job
+      - uses: changesets/action@e0145edc7d9d8679003495b11f87bd8ef63c0cba # v1.5.3
+        id: changesets
+        with:
+          publish: pnpm exec changeset tag #only create git tag, publish to registry happens later
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # needed for some github api calls changesets makes
+  build:
+    needs: changesets
+    if: needs.changesets.outputs.published == 'true'
+    permissions:
+      contents: read
+    outputs:
+      artifactChecksum: ${{steps.build.outputs.artifactChecksum}}
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/init-job
+      - name: Build and pack
+        id: build
+        run: |
+          # print published packages
+          echo "${{needs.changesets.outputs.publishedPackages}}" | jq -r '.[] | .name + "@" +.version '
+
+          # convert published packages to "--filter package1 --filter package2"
+          $PUBLISHED_PACKAGES_FILTER=$(echo "${{needs.changesets.outputs.publishedPackages}}" | jq -r '.[] | " --filter " + "\"" + .name+ "\""' | xargs)
+
+          # call build scripts - if you have packages with prepublishOnly scripts, call them here too or switch them to build
+          pnpm -r $PUBLISHED_PACKAGES_FILTER build
+
+          # ensure that build did not change anything under git. this includes package.json so no postinstall script injection
+          GIT_STATUS=$(git status --porcelain=v1)
+          if [[ "$GIT_STATUS" != "" ]]; then
+            echo "building lead to a dirty git state:"
+            echo "$GIT_STATUS";
+            exit 1
+          fi
+
+          # create an empty dir to write .tgz files to
+          rm -rf $RUNNER_TEMP/packages
+          mkdir -p $RUNNER_TEMP/packages
+
+          pnpm -r $PUBLISHED_PACKAGES_FILTER  pack --pack-destination $RUNNER_TEMP/packages
+          cd $RUNNER_TEMP
+
+          # merge all of them into one file and checksum that, copy the checksum to job output
+          tar -cf packages.tar packages
+          echo "artifactChecksum=$(sha256sum packages.tar)" >> $GITHUB_OUTPUT
+      # upload packages.tar so we can download it in the publish job
+      - name: upload built packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages.tar
+          compression-level: '0' # tgz files in a tar are already compressed, don't try again
+          retention-days: 1
+
+  publish:
+    needs:
+     - build
+    # uses a separate environment. this must be created on github
+    # it must have a branch constraint for main (or all branches you publish from, eg all protected)
+    # you must use protected branches for this or it is not effective
+    # once set up in github, add the environment name in the npm package settings screen for oidc publishing
+    environment: release
+    permissions:
+      id-token: write # needed for oidc publishing
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/init-job
+        with:
+          # tell the init composite to not install dependencies
+          install-deps: false
+          # and tell harden runner to allow the endpoints needed for publishing
+          allowed-endpoints:  >
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            registry.npmjs.org:443
+            *.sigstore.dev:443
+      - name: Download build artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: packages
+          path: packages.tar
+      # this step fails if for whatever reason the downloaded tar does not have the same checksum as the one you uploaded
+      # action download contains a checksum check but it says it'll warn. we want errors!
+      - name: Validate artifact
+        run: |
+          echo '${{needs.build.outputs.artifactChecksum}}' | sha256sum -c
+
+      - name: Publish
+        run: |
+          # one thing we have to check before publishing. changesets could be in pre-release mode and we need the tag from that
+          # this relies on changeset internals but it is unlikely to change
+          if [[ -f .changeset/pre.json ]]; then
+            TAG=$(jq -r '.tag' .changeset/pre.json)
+          else
+            TAG=latest
+          fi
+          tar -xf packages.tar
+          cd packages
+          for pkg in *.tgz; do
+            pnpm publish --tag $TAG --no-git-checks $pkg || { echo "publishing $pkg failed"; FAILED=true; }"
+          done
+          if [[ "$FAILED" == "true" ]]; then
+            echo "one or more packages failed to publish"
+            exit 1
+          fi

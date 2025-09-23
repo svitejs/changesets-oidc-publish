@@ -1,0 +1,7 @@
+{
+  "name": "svitejs-scopeless-example",
+  "version": "0.0.1",
+  "type": "module",
+  "license": "ISC",
+  "files": ["index.js"]
+}

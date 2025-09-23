@@ -1,0 +1,134 @@
+name: Release optimized
+
+on:
+  workflow_dispatch:
+
+
+permissions: {}
+
+jobs:
+  checks:
+    permissions:
+      contents: read
+    if: github.repository == 'svitejs/changesets-oidc-publish'
+    name: Checks
+    runs-on: ubuntu-latest
+    outputs:
+      hasChangesets: ${{steps.data.outputs.hasChangesets}}
+      unreleasedPackages: ${{steps.data.outputs.unreleasedPackages}}
+      runBuild: ${{steps.data.outputs.runBuild}}
+    steps:
+      - uses: ./.github/actions/init-job
+      - name: "collect data"
+        id: data
+        run: |
+          pnpm changeset status --output changeset-status.json
+          HAS_CHANGESETS=$(jq -r '.changesets == []' status.json)
+          rm changeset-status.json
+          if [[ "$HAS_CHANGESETS" == "false" ]]; then
+            # use pnpm to list public packages in the monorepo and then xargs and npm to filter those that already exist in the registry at their current version
+            UNRELEASED_PACKAGES=$(pnpm ls -r -depth -1 --json | jq -r 'reduce .[] as $pkg ("" ; . + if $pkg.private then "" else ($pkg.name + "@" + $pkg.version + "\n") end)' | xargs  -I {} sh -c ' pnpm info {} version &> /dev/null || echo {}' | sed -r 's/(.*)@.*/\1/g' | xargs )
+            RUN_BUILD=$(echo "\"$UNRELEASED_PACKAGES\"" | jq '. != ""')
+          else
+            UNRELEASED_PACKAGES=""
+            RUN_BUILD=false
+          fi
+          echo "hasChangesets=$HAS_CHANGESETS"  >> $GITHUB_OUTPUT
+          echo "unreleasedPackages=$UNRELEASED_PACKAGES"  >> $GITHUB_OUTPUT
+          echo "runBuild=$RUN_BUILD" >> $GITHUB_OUTPUT
+      - name: "checks"
+        run: |
+          pnpm run --if-present checks
+        # add more of your own checks here that should run before any other step
+  build:
+    needs: checks
+    if: needs.checks.outputs.runBuild == 'true'
+    permissions:
+      contents: read
+    name: Build
+    runs-on: ubuntu-latest
+    outputs:
+      artifactChecksum: ${{steps.build.outputs.artifactChecksum}}
+    steps:
+      - uses: ./.github/actions/init-job
+      - name: Build and pack
+        if: needs.checks.outputs.runBuild == 'true'
+        id: build
+        run: |
+          for pkg in ${{needs.checks.outputs.unreleasedPackages}} do
+            pnpm --filter $pkg --if-present build
+            GIT_STATUS=$(git status --porcelain=v1)
+            if [[ "$GIT_STATUS" != "" ]]; then
+              echo "building $pkg lead to a dirty git state:"
+              echo "$GIT_STATUS";
+              exit 1
+            fi
+          done
+          rm -rf $RUNNER_TEMP/packages
+          mkdir -p $RUNNER_TEMP/packages
+          for pkg in ${{needs.checks.outputs.unreleasedPackages}} do
+            pnpm --filter $pkg pack --pack-destination $RUNNER_TEMP/packages
+          done
+          cd $RUNNER_TEMP
+          tar -cf packages.tar packages
+          echo "artifactChecksum=$(sha256sum packages.tar)" >> $GITHUB_OUTPUT
+      - name: upload built packages
+        if: steps.build.conclusion == 'succesful'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: packages
+          path: ${{ runner.temp }}/packages.tar
+          compression-level: '0' # tgz files in a tar are already compressed, don't try again
+          retention-days: 1
+  changesets:
+    needs: build
+    permissions:
+      contents: write # to create releases (changesets/action)
+      pull-requests: write # to create version pull requests (changesets/action)
+    name: Changesets
+    runs-on: ubuntu-latest
+    outputs:
+      published: ${{steps.changesets.outputs.published}}
+      publishedPackages: ${{steps.changesets.outputs.publishedPackages}}
+    steps:
+      - uses: ./.github/actions/init-job
+      - name: Create Release Pull Request or Publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm exec changeset tag #only create git tag, publish to registry happens later
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# TODO validate if changesets published is true but we did not build then what?
+
+  publish:
+    needs:
+     - checks
+     - build
+     - changesets
+    environment: release
+    permissions:
+      id-token: write
+    if: needs.changesets.outputs.published
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/init-job
+        with:
+          install-deps: false
+          allowed-endpoints:  >
+            api.github.com:443
+            github.com:443
+            release-assets.githubusercontent.com:443
+            registry.npmjs.org:443
+            *.sigstore.dev:443
+      - name: Download build artifacts
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: packages
+          path: packages.tar
+      - name: Extract and validate artifact
+        run: |
+          echo '${{needs.build.outputs.artifactChecksum}}' | sha256sum -c
+          tar xf packages.tar
+      # TODO actually publish. we have tgz files and the changeset action output. make sure to only publish what changesets emitted
