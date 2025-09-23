@@ -18,6 +18,9 @@ jobs:
       unreleasedPackages: ${{steps.data.outputs.unreleasedPackages}}
       runBuild: ${{steps.data.outputs.runBuild}}
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: 'false'
       - uses: ./.github/actions/init-job
       - name: "collect data"
         id: data
@@ -50,6 +53,9 @@ jobs:
     outputs:
       artifactChecksum: ${{steps.build.outputs.artifactChecksum}}
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: 'false'
       - uses: ./.github/actions/init-job
       - name: Build and pack
         if: needs.checks.outputs.runBuild == 'true'
@@ -91,6 +97,9 @@ jobs:
       published: ${{steps.changesets.outputs.published}}
       publishedPackages: ${{steps.changesets.outputs.publishedPackages}}
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: 'false'
       - uses: ./.github/actions/init-job
       - name: Create Release Pull Request or Publish to npm
         id: changesets
@@ -113,6 +122,9 @@ jobs:
     name: publish
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: 'false'
       - uses: ./.github/actions/init-job
         with:
           install-deps: false
