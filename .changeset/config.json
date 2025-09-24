@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
 	"changelog": [
 		"@changesets/changelog-github",
-		{ "repo": "sveltejs/vite-plugin-svelte" }
+		{ "repo": "svitejs/changesets-oidc-publish" }
 	],
   "commit": false,
   "fixed": [],
